@@ -1,6 +1,18 @@
 #!/usr/bin/python
 #
 # hello.py
+# By houspi@gmail.com
+#
+# Print "Hello. I'm here!" text and input parameters
+#
+# usage: hello.py [-h] [--param1 PARAM1] [--param2 PARAM2]
+#
+# optional arguments:
+#  -h, --help       show this help message and exit
+#  --param1 PARAM1
+#  --param2 PARAM2
+
+
 
 import argparse
 
@@ -16,4 +28,3 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
     main(args.param1, args.param2)
-
