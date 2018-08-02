@@ -1,6 +1,27 @@
 #!/usr/bin/python
 #
 # fcgi-pm.py
+# By houspi@gmail.com
+#
+# Python daemon
+# prefork TCP server 
+# This is the base script
+# It doesn't provide any error and exception check
+#  Read data from client until get double \r\n (empty line)
+#  Run external program
+#  Send output to client
+#
+# usage: fcgi-pm.py [-h] [--socket SOCKET] [--queue-size QUEUE_SIZE]
+#                  [--count COUNT] [--daemon DAEMON] --cgi CGI
+#
+# optional arguments:
+#  -h, --help                show this help message and exit
+#  --socket SOCKET           host:port
+#  --queue-size QUEUE_SIZE   Max requests per child
+#  --count COUNT             Num of workers
+#  --cgi CGI                 Path to exucatable cgi with parameters
+#  --daemon DAEMON           Run as a daemon. Yes/No
+#
 
 import os
 import sys
@@ -12,7 +33,7 @@ import resource
 import logging
 import argparse
 
-PID_FILE = '/var/run/fcgi-pm.pid'
+PID_FILE    = '/var/run/fcgi-pm.pid'
 RUNNING_DIR = '/tmp'
 DEFAULT_HOST       = 'localhost'
 DEFAULT_PORT       = 8888
@@ -34,15 +55,21 @@ class ChildController:
 
 
 # Connection handler
+# sock - Socket
+# cgi_script - external script name
 def handle_connection(sock, cgi_script):
     logger.info('Start to process request')
+    
     # Read data from socket until double \r\n
     get_data = ''
     while not get_data.endswith('\r\n\r\n'):
         get_data += sock.recv(BUFFER_SIZE)
-        
+    
+    # Start external program
     proc = subprocess.Popen(cgi_script, shell=True, stdout=subprocess.PIPE)
     (stdout_data, stderr_data) = proc.communicate()
+    
+    # We mean that the program always runs successfully
     status = "200 OK"
     content_type = "text/plain"
     send_data = '';
@@ -58,18 +85,23 @@ def handle_connection(sock, cgi_script):
 
 
 # Start child process
+# sock - Socket
+# queue_size - max requests per child
+# cgi_script - external script name
 def start_child(sock, queue_size, cgi_script):
     child_pipe, parent_pipe = socket.socketpair()
     pid = os.fork()
+    # child process
     if pid == 0:
-        # child process
         child_pipe.close()
         while 1:
-            # Read data from parent
+            # read data from parent
             command = parent_pipe.recv(BUFFER_SIZE)
             connection, (client_ip, clinet_port) = sock.accept()
             logger.info('Child %d Accept connection %s:%d' % (os.getpid(), client_ip, clinet_port))
-            # Send answer to parent
+            
+            # send answer to parent
+            # run external program
             parent_pipe.send('accept')
             handle_connection(connection, cgi_script)
             connection.close()
@@ -82,18 +114,25 @@ def start_child(sock, queue_size, cgi_script):
 
 
 # Main server loop
+# server_host - server host
+# server_port - port 
+# queue_size  - max requests per child
+# workers_count - num of workers
+# cgi_script - external script name
 def server_loop(server_host, server_port, queue_size, workers_count, cgi_script):
-    # Create new socket with flag SO_REUSEADDR
+    # Create new socket 
     # bind them and listen
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((server_host, server_port))
     sock.listen(DEFAULT_BACKLOG)
     logger.info('Listning on %s:%d...' % (server_host, server_port))
-
+    
+    # start workers
     for i in range(workers_count):
         start_child(sock, queue_size, cgi_script)
-
+    
+    # main infinite loop
     to_read = [sock] + [child.pipe.fileno() for child in childs_list.values()]
     while 1:
         # Test if socket is readable
